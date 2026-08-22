@@ -12,6 +12,60 @@ from auth import init_db, signup_user, login_user
 init_db()
 
 st.set_page_config(page_title="Expense Tracker", page_icon="💰")
+# --- Custom CSS for Animations ---
+st.markdown("""
+<style>
+/* Page fade-in */
+.main {
+    animation: fadeIn 0.8s ease-in;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Animated gradient title */
+h1 {
+    background: linear-gradient(270deg, #FF512F, #F09819, #FF512F);
+    background-size: 600% 600%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: gradientShift 5s ease infinite;
+}
+@keyframes gradientShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* Button hover effect */
+.stButton button {
+    transition: all 0.3s ease;
+    border-radius: 8px;
+}
+.stButton button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(255, 81, 47, 0.4);
+}
+
+/* Metric cards */
+[data-testid="stMetric"] {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 15px;
+    border-radius: 12px;
+    transition: transform 0.3s ease;
+}
+[data-testid="stMetric"]:hover {
+    transform: translateY(-5px);
+}
+
+/* Input box focus glow */
+.stTextInput input:focus {
+    box-shadow: 0 0 8px rgba(255, 81, 47, 0.5);
+    transition: box-shadow 0.3s ease;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ========================================================
 # PART 1: LOGIN / SIGNUP (Ye sabse pehle chalega)
@@ -155,6 +209,7 @@ with st.form(key="text_form", clear_on_submit=True):
             results = extract_expenses(user_input)
             save_multiple_expenses(results)
             st.success(f"✅ {len(results)} expense(s) save ho gaye!")
+            st.balloons()
             for r in results:
                 st.write(f"— ₹{r['amount']} | {r['category']} | {r['description']}")
         except Exception as e:
@@ -179,6 +234,7 @@ if audio_value:
                 results = extract_expenses_from_audio(audio_bytes)
                 save_multiple_expenses(results)
             st.success(f"✅ {len(results)} expense(s) save ho gaye!")
+            st.balloons()
             for r in results:
                 st.write(f"— ₹{r['amount']} | {r['category']} | {r['description']}")
         except Exception as e:
