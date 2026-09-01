@@ -2,14 +2,12 @@ import streamlit as st
 from google import genai
 from google.genai import types
 import json
-import csv
-import os
 import pandas as pd
 from datetime import datetime
 from openpyxl import load_workbook
-from auth import init_db, signup_user, login_user
+from auth import signup_user, login_user
+from auth import supabase  # expenses ke liye bhi yahi connection use karenge
 
-init_db()
 
 st.set_page_config(page_title="Expense Tracker", page_icon="💰")
 # --- Custom CSS for Animations ---
@@ -109,8 +107,6 @@ if not st.session_state["logged_in"]:
 # ========================================================
 
 client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
-FILENAME = "expenses.csv"
-
 st.title("💰 AI Expense Tracker")
 st.write("Ek ya kai expenses likho ya bolo, AI khud alag-alag samajh lega!")
 
@@ -159,20 +155,15 @@ Agar sirf ek hi expense ho, tab bhi ek-item wali list return karo."""
     return json.loads(text)
 
 
-# --- Function 3: Ek Expense Save Karna (User Ke Naam Ke Saath) ---
+# --- Function 3: Ek Expense Save Karna (Supabase Mein) ---
 def save_expense(expense):
-    file_exists = os.path.isfile(FILENAME)
-    with open(FILENAME, mode="a", newline="", encoding="utf-8") as file:
-        writer = csv.writer(file)
-        if not file_exists:
-            writer.writerow(["Username", "Date", "Amount", "Category", "Description"])
-        writer.writerow([
-            st.session_state["username"],
-            datetime.now().strftime("%Y-%m-%d %H:%M"),
-            expense["amount"],
-            expense["category"],
-            expense["description"]
-        ])
+    supabase.table("expenses").insert({
+        "username": st.session_state["username"],
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "amount": expense["amount"],
+        "category": expense["category"],
+        "description": expense["description"]
+    }).execute()
 
 
 # --- Function 4: Multiple Expenses Save Karna ---
@@ -188,11 +179,12 @@ def create_excel(rows, excel_filename):
 
     wb = load_workbook(excel_filename)
     ws = wb.active
-    ws.column_dimensions["A"].width = 15  # Username
-    ws.column_dimensions["B"].width = 18  # Date
-    ws.column_dimensions["C"].width = 12  # Amount
-    ws.column_dimensions["D"].width = 15  # Category
-    ws.column_dimensions["E"].width = 30  # Description
+    ws.column_dimensions["A"].width = 8   # id
+    ws.column_dimensions["B"].width = 15  # username
+    ws.column_dimensions["C"].width = 18  # date
+    ws.column_dimensions["D"].width = 12  # amount
+    ws.column_dimensions["E"].width = 15  # category
+    ws.column_dimensions["F"].width = 30  # description
     wb.save(excel_filename)
 
 
@@ -241,61 +233,55 @@ if audio_value:
             st.error(f"❌ Kuch samajh nahi aaya: {e}")
 
 
-# --- Summary Section (Sirf Is User Ka Data) ---
+# --- Summary Section (Sirf Is User Ka Data, Supabase Se) ---
 st.divider()
 st.subheader("📊 Summary")
 
-if os.path.isfile(FILENAME):
+result = supabase.table("expenses").select("*").eq("username", st.session_state["username"]).execute()
+user_rows = result.data
+
+if user_rows:
     total = 0
     category_totals = {}
-    user_rows = []
 
-    with open(FILENAME, mode="r", encoding="utf-8") as file:
-        reader = csv.DictReader(file)
-        for row in reader:
-            if row["Username"] == st.session_state["username"]:
-                user_rows.append(row)
-                amount = float(row["Amount"])
-                total += amount
-                category = row["Category"]
-                category_totals[category] = category_totals.get(category, 0) + amount
+    for row in user_rows:
+        amount = float(row["amount"])
+        total += amount
+        category = row["category"]
+        category_totals[category] = category_totals.get(category, 0) + amount
 
-    if user_rows:
-        st.metric("Total Kharch", f"₹{total}")
+    st.metric("Total Kharch", f"₹{total}")
 
-        for cat, amt in category_totals.items():
-            st.write(f"**{cat}**: ₹{amt}")
+    for cat, amt in category_totals.items():
+        st.write(f"**{cat}**: ₹{amt}")
 
-        st.divider()
-        st.subheader("📋 Tumhare Saare Expenses")
-        st.table(user_rows)
+    st.divider()
+    st.subheader("📋 Tumhare Saare Expenses")
+    st.table(user_rows)
 
-        # --- Download Section ---
-        st.divider()
-        st.subheader("📥 Data Download Karo")
+    st.divider()
+    st.subheader("📥 Data Download Karo")
 
-        col1, col2 = st.columns(2)
+    col1, col2 = st.columns(2)
 
-        with col1:
-            df_csv = pd.DataFrame(user_rows)
-            csv_data = df_csv.to_csv(index=False)
+    with col1:
+        df_csv = pd.DataFrame(user_rows)
+        csv_data = df_csv.to_csv(index=False)
+        st.download_button(
+            label="⬇️ CSV Download Karo",
+            data=csv_data,
+            file_name="my_expenses.csv",
+            mime="text/csv"
+        )
+
+    with col2:
+        create_excel(user_rows, "my_expenses.xlsx")
+        with open("my_expenses.xlsx", "rb") as f:
             st.download_button(
-                label="⬇️ CSV Download Karo",
-                data=csv_data,
-                file_name="my_expenses.csv",
-                mime="text/csv"
+                label="⬇️ Excel Download Karo",
+                data=f,
+                file_name="my_expenses.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
-
-        with col2:
-            create_excel(user_rows, "my_expenses.xlsx")
-            with open("my_expenses.xlsx", "rb") as f:
-                st.download_button(
-                    label="⬇️ Excel Download Karo",
-                    data=f,
-                    file_name="my_expenses.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-    else:
-        st.info("Abhi tak koi expense add nahi hua.")
 else:
-    st.info("Abhi tak koi expense add nahi hua.")
+        st.info("Abhi tak koi expense add nahi hua.")
