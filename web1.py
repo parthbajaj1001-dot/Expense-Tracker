@@ -237,7 +237,7 @@ if audio_value:
 st.divider()
 st.subheader("📊 Summary")
 
-result = supabase.table("expenses").select("*").eq("username", st.session_state["username"]).execute()
+result = supabase.table("expenses").select("*").eq("username", st.session_state["username"]).eq("archived", False).execute()
 user_rows = result.data
 
 if user_rows:
@@ -258,6 +258,33 @@ if user_rows:
     st.divider()
     st.subheader("📋 Tumhare Saare Expenses")
     st.table(user_rows)
+        # --- Clear All Button (Archive, Delete Nahi) ---
+    st.divider()
+    if "confirm_clear" not in st.session_state:
+        st.session_state["confirm_clear"] = False
+
+    if not st.session_state["confirm_clear"]:
+        if st.button("🗑️ Clear All Expenses"):
+            st.session_state["confirm_clear"] = True
+            st.rerun()
+    else:
+        st.warning("⚠️ Pakka saare current expenses clear karne hain? Ye History mein safe rahenge, delete nahi honge.")
+        col_yes, col_no = st.columns(2)
+        with col_yes:
+            if st.button("✅ Haan, Clear Karo"):
+                now = datetime.now().strftime("%Y-%m-%d %H:%M")
+                for row in user_rows:
+                    supabase.table("expenses").update({
+                        "archived": True,
+                        "archived_at": now
+                    }).eq("id", row["id"]).execute()
+                st.session_state["confirm_clear"] = False
+                st.success("Clear ho gaya! History mein dekh sakte ho.")
+                st.rerun()
+        with col_no:
+            if st.button("❌ Nahi, Rehne Do"):
+                st.session_state["confirm_clear"] = False
+                st.rerun()
 
     st.divider()
     st.subheader("📥 Data Download Karo")
@@ -285,3 +312,24 @@ if user_rows:
             )
 else:
         st.info("Abhi tak koi expense add nahi hua.")
+        # --- History Section (Cleared Expenses) ---
+st.divider()
+with st.expander("📜 History (Pehle Clear Kiye Hue Expenses)"):
+    history_result = supabase.table("expenses").select("*").eq("username", st.session_state["username"]).eq("archived", True).execute()
+    history_rows = history_result.data
+
+    if history_rows:
+        # Group by archived_at date
+        grouped = {}
+        for row in history_rows:
+            key = row.get("archived_at", "Unknown")
+            grouped.setdefault(key, []).append(row)
+
+        for archive_date, rows in sorted(grouped.items(), reverse=True):
+            st.write(f"**🗓️ Cleared on: {archive_date}**")
+            total = sum(float(r["amount"]) for r in rows)
+            st.write(f"Total: ₹{total}")
+            st.table(rows)
+            st.divider()
+    else:
+        st.write("Abhi tak koi history nahi hai.")
