@@ -1,4 +1,5 @@
 import streamlit as st
+import requests
 from google import genai
 from google.genai import types
 import json
@@ -88,18 +89,22 @@ if not st.session_state["logged_in"]:
                 st.error("Galat username ya password.")
 
     with tab2:
-        signup_username = st.text_input("Naya Username", key="signup_user")
-        signup_password = st.text_input("Naya Password", type="password", key="signup_pass")
+        col_u, col_p = st.columns(2)
+        with col_u:
+            signup_username = st.text_input("Naya Username", key="signup_user")
+        with col_p:
+            signup_password = st.text_input("Naya Password", type="password", key="signup_pass")
         if st.button("Signup"):
             if signup_username and signup_password:
-                success, message = signup_user(signup_username, signup_password)
+                success, message, suggestions = signup_user(signup_username, signup_password)
                 if success:
                     st.success(message)
                 else:
                     st.error(message)
+                    if suggestions:
+                        st.info("💡 Ye try karo: " + ", ".join(suggestions))
             else:
                 st.warning("Username aur password dono bharo.")
-
     st.stop()
 
 # ========================================================
@@ -319,6 +324,32 @@ with st.expander("📜 History (Pehle Clear Kiye Hue Expenses)"):
     history_rows = history_result.data
 
     if history_rows:
+        # --- History Download Buttons ---
+        st.subheader("📥 History Download Karo")
+        col_h1, col_h2 = st.columns(2)
+
+        with col_h1:
+            df_hist_csv = pd.DataFrame(history_rows)
+            hist_csv_data = df_hist_csv.to_csv(index=False)
+            st.download_button(
+                label="⬇️ History CSV Download Karo",
+                data=hist_csv_data,
+                file_name="expense_history.csv",
+                mime="text/csv"
+            )
+
+        with col_h2:
+            create_excel(history_rows, "expense_history.xlsx")
+            with open("expense_history.xlsx", "rb") as f:
+                st.download_button(
+                    label="⬇️ History Excel Download Karo",
+                    data=f,
+                    file_name="expense_history.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+
+        st.divider()
+
         # Group by archived_at date
         grouped = {}
         for row in history_rows:
@@ -333,3 +364,30 @@ with st.expander("📜 History (Pehle Clear Kiye Hue Expenses)"):
             st.divider()
     else:
         st.write("Abhi tak koi history nahi hai.")
+
+
+# --- Feedback Section ---
+st.divider()
+st.subheader("💬 Feedback Do")
+st.caption("Koi suggestion ya problem ho to yahan likho, hume seedha mil jayega!")
+
+with st.form(key="feedback_form", clear_on_submit=True):
+    feedback_text = st.text_area("Apna feedback likho:", placeholder="Jaise: mujhe ye feature chahiye...")
+    feedback_submitted = st.form_submit_button("Feedback Bhejo")
+
+    if feedback_submitted and feedback_text:
+        try:
+            response = requests.post(
+                "https://formspree.io/f/xvkgrnjg",
+                data={
+                    "username": st.session_state["username"],
+                    "message": feedback_text
+                },
+                headers={"Accept": "application/json"}
+            )
+            if response.status_code == 200:
+                st.success("✅ Feedback bhej diya! Dhanyavaad 🙏")
+            else:
+                st.error("❌ Kuch gadbad hui, dubara try karo.")
+        except Exception as e:
+            st.error(f"❌ Error: {e}")
